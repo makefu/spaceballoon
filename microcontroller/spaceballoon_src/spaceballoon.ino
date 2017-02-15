@@ -2,7 +2,10 @@
 // Only used for sprintf
 #include <stdio.h>
 // Data wire is plugged into port 7 on the Arduino
-// Connect a 4.7K resistor between VCC and the data pin (strong pullup)
+// 
+//
+// 
+//
 #define DHT22_PIN 2
 DHT22 myDHT22(DHT22_PIN);
 
@@ -81,18 +84,18 @@ void loop(void)
       Serial.println("Polled to quick ");
       break;
   }
+  File dataFile = SD.open("datalog.txt", FILE_WRITE);
   Serial.print(dataString);
-  //File dataFile = SD.open("datalog.txt", FILE_WRITE);
 
-  //// if the file is available, write to it:
-  //if (dataFile) {
-  //  dataFile.println(dataString);
-  //  dataFile.close();
-  //  // print to the serial port too:
-  //}
-  //// if the file isn't open, pop up an error:
-  //else {
-  //  Serial.println("error opening datalog.txt");
-  //}
+  // if the file is available, write to it:
+  if (dataFile) {
+    dataFile.println("Wrote Data");
+    dataFile.close();
+    // print to the serial port too:
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
+  }
 
 }
