@@ -9,11 +9,20 @@
 // 14(MISO) -> SD:MOSI
 // 16(MOSI) -> SD:MISO
 // 13(SCLK) -> SD:CLK
-// 2        -> DHT:DATA
-//
+// 19       -> DHT:DATA
+// VCC      -> GPS:VIN
+// 1(TX)    -> GPS:RX
+// 0(RX)    -> GPS:TX
+// 21(A2)    -> XBEE:DIN
+// 20(A3)    -> XBEE:DOUT
 
 #define DHT22_PIN 19
 #define CS_PIN 18
+#define GPS_RX_PIN 0
+#define GPS_TX_PIN 1
+
+#define XBEE_RX_PIN 20
+#define XBEE_TX_PIN 21
 
 
 DHT22 myDHT22(DHT22_PIN);
@@ -22,100 +31,125 @@ DHT22 myDHT22(DHT22_PIN);
 
 #include <SPI.h>
 #include <SD.h>
-const uint32_t SAMPLE_INTERVAL_MS = 5000;
+#define SAMPLE_INTERVAL_MS 2000
+
 uint32_t logTime;
 
 // software serial
-//#include <Adafruit_GPS.h>
-//#include <SoftwareSerial.h>
+#include <Adafruit_GPS.h>
+#include <SoftwareSerial.h>
+//SoftwareSerial gps_serial(GPS_RX_PIN, GPS_TX_PIN);
+//Adafruit_GPS GPS(&gps_serial);
+
+HardwareSerial gps_serial = Serial1;
+Adafruit_GPS GPS(&Serial1);
+
+
+SoftwareSerial xbee(XBEE_RX_PIN, XBEE_TX_PIN);
+int counter = 0;
 
 
 void setup(void)
 {
-  // start serial port
+  // SERIAL PORT
+  delay(3000);
   Serial.begin(9600);
-  Serial.println("DHT22 Library Demo");
+
+
+  // SERIAL
   if (!SD.begin(CS_PIN)) {
-    Serial.println("Card failed, or not present");
-    // don't do anything more:
+    // Serial.println("CARD FAILED TO INITIALIZE");
     return;
   }
-  Serial.println("Card initialized.");
+  // Serial.println("CARD INITIALIZED");
+
+  // GPS
+  GPS.begin(9600);
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
+  GPS.sendCommand(PGCMD_ANTENNA);
+  delay(1000);
+  //gps_serial.println(PMTK_Q_RELEASE); // Firmware Version
+  // Serial.println("GPS INITIALIZED");
+
+	// XBEE
+	xbee.begin( 9600 );
+  // Serial.println("XBEE INITIALIZED");
+
+
+  // TIMING
   logTime = micros()/(1000UL*SAMPLE_INTERVAL_MS) + 1;
   logTime *= 1000UL*SAMPLE_INTERVAL_MS;
 }
 
 void loop(void)
 {
-  DHT22_ERROR_t errorCode;
+	String transmit;
+  String dataString;
   // The sensor can only be read from every 1-2s, and requires a minimum
   // 2s warm-up after power-on.
   logTime += 1000UL*SAMPLE_INTERVAL_MS;
 
-  // Wait for log time.
+  // WAIT FOR CORRECT LOG TIME
   int32_t diff;
+	bool gps_parsed = false;
+
+  // Serial.println("Waiting for GPS");
+	do {
+		char c = GPS.read();
+		gps_parsed = false;
+		if ( GPS.newNMEAreceived()) {
+			if (GPS.parse(GPS.lastNMEA())){
+					gps_parsed = true;
+			}
+		}
+	} while (!gps_parsed);
+
+	// Serial.println("Waiting for Timeout");
   do {
     diff = micros() - logTime;
   } while (diff < 0);
 
 
-  String dataString = "";
-  dataString += logTime/1000;
-  dataString += ",";
-
-  Serial.print("Requesting data...");
-  errorCode = myDHT22.readData();
-  switch(errorCode)
-  {
-    case DHT_ERROR_NONE:
-      Serial.println("Got Data");
+  // DHT22
+  // Serial.println("Requesting data...");
+  if (myDHT22.readData() == DHT_ERROR_NONE){
+			dataString += ",";
 			dataString += myDHT22.getTemperatureC();
 			dataString += ",";
       dataString += myDHT22.getHumidity();
-      dataString += ",";
-      break;
-    case DHT_ERROR_CHECKSUM:
-      Serial.print("check sum error ");
-			dataString += ",,";
-			break;
-    case DHT_BUS_HUNG:
-      Serial.println("BUS Hung ");
-			dataString += ",,";
-      break;
-    case DHT_ERROR_NOT_PRESENT:
-      Serial.println("Not Present ");
-			dataString += ",,";
-      break;
-    case DHT_ERROR_ACK_TOO_LONG:
-      Serial.println("ACK time out ");
-			dataString += ",,";
-      break;
-    case DHT_ERROR_SYNC_TIMEOUT:
-      Serial.println("Sync Timeout ");
-			dataString += ",,";
-      break;
-    case DHT_ERROR_DATA_TIMEOUT:
-      Serial.println("Data Timeout ");
-			dataString += ",,";
-      break;
-    case DHT_ERROR_TOOQUICK:
-      Serial.println("Polled to quick ");
-			dataString += ",,";
-      break;
+  }else {
+    dataString += ",,";
   }
 
-  dataString += "\n";
-  Serial.print(dataString);
+
+	transmit =  "$trk,";
+	transmit = transmit + GPS.hour + ":";
+	transmit = transmit + GPS.minute + ":";
+	transmit = transmit + round((float)GPS.seconds + (float)GPS.milliseconds/1000) +",";
+	transmit = transmit + GPS.latitudeDegrees + ",";
+	transmit = transmit + GPS.longitudeDegrees + ",";
+	transmit = transmit + GPS.altitude + ",";
+	transmit = transmit + GPS.speed + ",";
+	transmit = transmit + GPS.angle + ",";
+	transmit = transmit + (int)GPS.satellites + ",";
+	transmit = transmit + (int)GPS.fix + ",";
+	transmit = transmit + (int)GPS.fixquality + ",";
+	transmit = transmit + counter;
+
+	xbee.println(transmit);
 
   File dataFile = SD.open("datalog.txt", FILE_WRITE);
-  // if the file is available, write to it:
+	Serial.print(transmit);
+	Serial.print(dataString);
   if (dataFile) {
-    dataFile.println(dataString);
+    dataFile.print(transmit);
+    dataFile.print(dataString);
     dataFile.close();
-    // print to the serial port too:
   }
-  // if the file isn't open, pop up an error:
   else {
-    Serial.println("error opening datalog.txt");
+    // Serial.println("error opening datalog.txt");
   }
+	counter += 1;
+
 }
