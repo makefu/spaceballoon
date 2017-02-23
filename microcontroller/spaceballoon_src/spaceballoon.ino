@@ -13,11 +13,15 @@
 // VCC      -> GPS:VIN
 // 1(TX)    -> GPS:RX
 // 0(RX)    -> GPS:TX
-// 21(A2)    -> XBEE:DIN
-// 20(A3)    -> XBEE:DOUT
+// 21(A2)   -> XBEE:DIN
+// 20(A3)   -> XBEE:DOUT
+// 5        -> LED:IN
 
 #define DHT22_PIN 19
+#define DHT22_PIN2 21
+
 #define CS_PIN 18
+#define LED_PIN 5
 #define GPS_RX_PIN 0
 #define GPS_TX_PIN 1
 
@@ -26,6 +30,7 @@
 
 
 DHT22 myDHT22(DHT22_PIN);
+DHT22 myDHT22_2(DHT22_PIN2);
 
 // https://www.arduino.cc/en/Tutorial/Datalogger
 
@@ -55,6 +60,8 @@ void setup(void)
   delay(3000);
   Serial.begin(9600);
 
+  // LED
+  pinMode(LED_PIN, OUTPUT);
 
   // SERIAL
   if (!SD.begin(CS_PIN)) {
@@ -110,6 +117,8 @@ void loop(void)
     diff = micros() - logTime;
   } while (diff < 0);
 
+  digitalWrite(LED_BUILTIN, counter%2);
+
 
   // DHT22
   // Serial.println("Requesting data...");
@@ -122,29 +131,49 @@ void loop(void)
     dataString += ",,";
   }
 
+  if (myDHT22_2.readData() == DHT_ERROR_NONE){
+			dataString += ",";
+			dataString += myDHT22_2.getTemperatureC();
+			dataString += ",";
+      dataString += myDHT22_2.getHumidity();
+  }else {
+    dataString += ",,";
+  }
+
 
 	transmit =  "$trk,";
-	transmit = transmit + GPS.hour + ":";
-	transmit = transmit + GPS.minute + ":";
-	transmit = transmit + round((float)GPS.seconds + (float)GPS.milliseconds/1000) +",";
-	transmit = transmit + GPS.latitudeDegrees + ",";
-	transmit = transmit + GPS.longitudeDegrees + ",";
-	transmit = transmit + GPS.altitude + ",";
-	transmit = transmit + GPS.speed + ",";
-	transmit = transmit + GPS.angle + ",";
-	transmit = transmit + (int)GPS.satellites + ",";
-	transmit = transmit + (int)GPS.fix + ",";
-	transmit = transmit + (int)GPS.fixquality + ",";
-	transmit = transmit + counter;
+	transmit += GPS.hour ;
+  transmit += ":";
+	transmit += GPS.minute ;
+  transmit += ":";
+	transmit += round((float)GPS.seconds + (float)GPS.milliseconds/1000) ;
+  transmit += ",";
+	transmit += GPS.latitudeDegrees ;
+  transmit += ",";
+	transmit += GPS.longitudeDegrees ;
+  transmit += ",";
+	transmit += GPS.altitude ;
+  transmit += ",";
+	transmit += GPS.speed ;
+  transmit += ",";
+	transmit += GPS.angle ;
+  transmit += ",";
+	transmit += (int)GPS.satellites ;
+  transmit += ",";
+	transmit += (int)GPS.fix ;
+  transmit += ",";
+	transmit += (int)GPS.fixquality ;
+  transmit += ",";
+	transmit += counter;
 
 	xbee.println(transmit);
 
   File dataFile = SD.open("datalog.txt", FILE_WRITE);
 	Serial.print(transmit);
-	Serial.print(dataString);
+	Serial.println(dataString);
   if (dataFile) {
     dataFile.print(transmit);
-    dataFile.print(dataString);
+    dataFile.println(dataString);
     dataFile.close();
   }
   else {
