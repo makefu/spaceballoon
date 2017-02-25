@@ -30,7 +30,6 @@
 
 
 DHT22 myDHT22(DHT22_PIN);
-DHT22 myDHT22_2(DHT22_PIN2);
 
 // https://www.arduino.cc/en/Tutorial/Datalogger
 
@@ -117,7 +116,7 @@ void loop(void)
     diff = micros() - logTime;
   } while (diff < 0);
 
-  digitalWrite(LED_BUILTIN, counter%2);
+  digitalWrite(LED_PIN, 1);
 
 
   // DHT22
@@ -131,16 +130,6 @@ void loop(void)
     dataString += ",,";
   }
 
-  if (myDHT22_2.readData() == DHT_ERROR_NONE){
-			dataString += ",";
-			dataString += myDHT22_2.getTemperatureC();
-			dataString += ",";
-      dataString += myDHT22_2.getHumidity();
-  }else {
-    dataString += ",,";
-  }
-
-
 	transmit =  "$trk,";
 	transmit += GPS.hour ;
   transmit += ":";
@@ -148,15 +137,20 @@ void loop(void)
   transmit += ":";
 	transmit += round((float)GPS.seconds + (float)GPS.milliseconds/1000) ;
   transmit += ",";
-	transmit += GPS.latitudeDegrees ;
+	transmit += String(GPS.latitude,4);
   transmit += ",";
-	transmit += GPS.longitudeDegrees ;
+	transmit += String(GPS.longitude,4);
+  transmit += ",";
+  // explicit typecast to String to keep more than 2 digits
+	transmit += String(GPS.latitudeDegrees,6) ; 
+  transmit += ",";
+	transmit += String(GPS.longitudeDegrees,6) ;
   transmit += ",";
 	transmit += GPS.altitude ;
   transmit += ",";
 	transmit += GPS.speed ;
   transmit += ",";
-	transmit += GPS.angle ;
+	transmit += String(GPS.angle,4) ;
   transmit += ",";
 	transmit += (int)GPS.satellites ;
   transmit += ",";
@@ -165,20 +159,20 @@ void loop(void)
 	transmit += (int)GPS.fixquality ;
   transmit += ",";
 	transmit += counter;
+  transmit += dataString;
 
 	xbee.println(transmit);
 
   File dataFile = SD.open("datalog.txt", FILE_WRITE);
-	Serial.print(transmit);
-	Serial.println(dataString);
+	Serial.println(transmit);
   if (dataFile) {
-    dataFile.print(transmit);
-    dataFile.println(dataString);
+    dataFile.println(transmit);
     dataFile.close();
   }
   else {
     // Serial.println("error opening datalog.txt");
   }
 	counter += 1;
+  digitalWrite(LED_PIN, 0);
 
 }
